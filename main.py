@@ -8,7 +8,7 @@ import os
 import logging
 from dotenv import load_dotenv
 from sqlalchemy import select
-from app.core.database import AsyncSessionLocal
+from app.core.database import AsyncSessionLocal, engine, Base
 from app.models.base import ApiKey, ScenePoolRelation
 from app.core.state import runtime_state
 from app.services.counter import request_counter_service
@@ -148,6 +148,10 @@ app = create_app()
 
 @app.on_event("startup")
 async def startup_event():
+    # 自动建表：如果表不存在则创建
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    logging.info("Database tables ensured (created if not exists).")
     await config_service.init_defaults()
     await strategy_init_service.init_default_strategies()
 
