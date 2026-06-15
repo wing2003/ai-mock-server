@@ -38,4 +38,3 @@ python main.py
 - **后端**: FastAPI, SQLAlchemy (Async), Uvicorn
 - **数据库**: MySQL 8.2, Asyncmy
 - **前端**: Jinja2, HTMX, Tailwind CSS
-- **限流**: Limits (工业级滑动窗口)
