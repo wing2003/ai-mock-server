@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="flex justify-between items-center mb-6">
+    <h2 class="text-2xl font-bold text-gray-700">场景列表</h2>
+    <button onclick="document.getElementById('create-modal').classList.remove('hidden')" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
+        新建场景
+    </button>
+</div>
+
+<!-- 新建场景弹窗 -->
+<div id="create-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center">
+    <div class="bg-white p-6 rounded-lg shadow-xl w-96">
+        <h3 class="text-lg font-bold mb-4">新建场景</h3>
+        <form action="/admin/scenes/create" method="post">
+            <input type="text" name="name" placeholder="场景名称" required class="w-full border p-2 mb-3 rounded">
+            <textarea name="description" placeholder="描述" class="w-full border p-2 mb-3 rounded"></textarea>
+            <div class="flex justify-end space-x-2">
+                <button type="button" onclick="document.getElementById('create-modal').classList.add('hidden')" class="px-4 py-2 text-gray-600">取消</button>
+                <button type="submit" class="bg-blue-500 text-white px-4 py-2 rounded">创建</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    {% for scene in scenes %}
+    <div class="bg-white rounded-lg shadow-md p-6 border-l-4 {% if scene.status == 'running' %}border-green-500{% else %}border-gray-300{% endif %}">
+        <div class="flex justify-between items-start">
+            <div>
+                <h3 class="text-xl font-semibold text-gray-800">{{ scene.name }}</h3>
+                <p class="text-sm text-gray-500 mt-1">{{ scene.description or '暂无描述' }}</p>
+            </div>
+            <span class="px-2 py-1 text-xs rounded-full {% if scene.status == 'running' %}bg-green-100 text-green-800{% else %}bg-gray-100 text-gray-800{% endif %}">
+                {{ scene.status }}
+            </span>
+        </div>
+        
+        <div class="mt-4 flex space-x-2">
+            {% if scene.status != 'running' %}
+            <form action="/admin/scenes/start/{{ scene.id }}" method="post" class="flex-1">
+                <button type="submit" class="w-full bg-green-500 hover:bg-green-700 text-white py-1 px-3 rounded text-sm transition">
+                    启动
+                </button>
+            </form>
+            {% else %}
+            <form action="/admin/scenes/stop/{{ scene.id }}" method="post" class="flex-1">
+                <button type="submit" class="w-full bg-red-500 hover:bg-red-700 text-white py-1 px-3 rounded text-sm transition">
+                    停止
+                </button>
+            </form>
+            {% endif %}
+            <a href="/admin/scenes/{{ scene.id }}/config" class="flex-1 text-center border border-blue-300 hover:bg-blue-50 text-blue-700 py-1 px-3 rounded text-sm transition">
+                配置
+            </a>
+            <form action="/admin/scenes/delete/{{ scene.id }}" method="post" class="flex-1" onsubmit="return confirm('确定删除吗？');">
+                <button type="submit" class="w-full border border-gray-300 hover:bg-gray-50 text-gray-700 py-1 px-3 rounded text-sm transition">
+                    删除
+                </button>
+            </form>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

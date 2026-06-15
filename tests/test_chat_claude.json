@@ -1,0 +1,6 @@
+{
+  "model": "claude-3-opus",
+  "messages": [
+    {"role": "user", "content": "Hi"}
+  ]
+}

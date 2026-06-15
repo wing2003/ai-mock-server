@@ -1,0 +1,5 @@
+{
+  "model": "gpt-3.5-turbo",
+  "prompt": "Once upon a time",
+  "max_tokens": 50
+}

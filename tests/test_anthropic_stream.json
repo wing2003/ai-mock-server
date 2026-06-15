@@ -1,0 +1,7 @@
+{
+  "model": "claude-3-opus-20240229",
+  "messages": [
+    {"role": "user", "content": "Hello"}
+  ],
+  "stream": true
+}

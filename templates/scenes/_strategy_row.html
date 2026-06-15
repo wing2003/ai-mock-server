@@ -1,0 +1,73 @@
+<div class="border p-4 rounded flex justify-between items-start {% if not strategy.is_enabled %}bg-gray-100 opacity-60{% endif %}" id="strategy-row-{{ strategy.id }}">
+    <div class="flex-1 pr-4">
+        <div class="flex items-center space-x-2 mb-2">
+            <h4 class="font-bold text-sm {% if not strategy.is_enabled %}text-gray-400{% else %}text-gray-800{% endif %}">
+                {{ strategy.strategy_name }}
+                {% if not strategy.is_enabled %}
+                <span class="text-xs text-red-500 ml-2">(不可用)</span>
+                {% endif %}
+            </h4>
+            <span class="text-xs px-2 py-0.5 rounded bg-gray-100 text-gray-600">{{ strategy.strategy_type }}</span>
+            <span class="text-xs text-gray-400">优先级: {{ strategy.default_priority }}</span>
+        </div>
+        
+        <!-- 仅在策略可用且已启用时显示参数编辑区 -->
+        {% set is_active = strategy.is_enabled and relation and relation.is_enabled %}
+        {% if is_active %}
+        <div class="bg-gray-50 p-2 rounded border border-gray-200 mt-2">
+            <p class="text-xs text-gray-500 mb-1">默认参数: {{ strategy.default_params | tojson }}</p>
+            {% if relation.custom_params %}
+            <div class="text-xs text-blue-600 font-mono mb-1">当前配置: {{ relation.custom_params | tojson }}</div>
+            {% endif %}
+            
+            <!-- 编辑表单 -->
+            <form hx-post="/admin/scenes/{{ request.path_params.scene_id }}/strategies/{{ strategy.id }}/params"
+                  hx-target="#strategy-row-{{ strategy.id }}"
+                  hx-swap="outerHTML"
+                  class="flex items-center space-x-2">
+                {% set raw_params = relation.custom_params if relation.custom_params else strategy.default_params %}
+                {% set display_value = raw_params if raw_params is string else (raw_params | tojson) %}
+                <input type="text" name="custom_params" 
+                       value='{{ display_value }}'
+                       class="w-full text-xs border rounded p-1 font-mono" 
+                       placeholder='{"key": "value"}'>
+                <button type="submit" class="bg-blue-500 hover:bg-blue-700 text-white text-xs px-2 py-1 rounded whitespace-nowrap">
+                    应用
+                </button>
+            </form>
+        </div>
+        {% elif not strategy.is_enabled %}
+        <!-- 策略不可用的提示 -->
+        <div class="mt-2">
+            <p class="text-xs text-red-500">此策略当前已禁用，无法在场景中使用</p>
+        </div>
+        {% endif %}
+    </div>
+    
+    <div class="flex items-center ml-4">
+        {% if not strategy.is_enabled %}
+        <!-- 策略不可用时，不显示任何按钮 -->
+        <span class="text-xs text-gray-400">不可用</span>
+        {% elif not relation or not relation.is_enabled %}
+        <!-- 策略可用但未启用时，显示启用按钮 -->
+        <button 
+            hx-post="/admin/scenes/{{ request.path_params.scene_id }}/strategies/{{ strategy.id }}/toggle"
+            hx-vals='{"is_enabled": "true"}'
+            hx-target="#strategy-row-{{ strategy.id }}"
+            hx-swap="outerHTML"
+            class="text-xs px-3 py-1 rounded border text-gray-500 border-gray-300 hover:bg-gray-50">
+            启用
+        </button>
+        {% else %}
+        <!-- 策略已启用时，显示禁用按钮 -->
+        <button 
+            hx-post="/admin/scenes/{{ request.path_params.scene_id }}/strategies/{{ strategy.id }}/toggle"
+            hx-vals='{"is_enabled": "false"}'
+            hx-target="#strategy-row-{{ strategy.id }}"
+            hx-swap="outerHTML"
+            class="text-xs px-3 py-1 rounded bg-green-50 text-green-600 border border-green-200 hover:bg-red-50 hover:text-red-600 hover:border-red-200">
+            禁用
+        </button>
+        {% endif %}
+    </div>
+</div>

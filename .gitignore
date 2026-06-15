@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+*.egg-info/
+dist/
+
+# 虚拟环境
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 环境变量
+.env
+
+# 数据库
+*.db
+*.sqlite3
+
+# 日志
+*.log
+
+# 测试报告与导出文件
+reports/
+exports/
+/tests/output.mp3

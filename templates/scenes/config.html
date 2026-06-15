@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="flex justify-between items-center mb-6">
+    <div>
+        <h2 class="text-2xl font-bold text-gray-700">{{ scene.name }} - 配置</h2>
+        <p class="text-sm text-gray-500">{{ scene.description or '暂无描述' }}</p>
+    </div>
+    <a href="/admin/scenes" class="text-blue-500 hover:underline">返回场景列表</a>
+</div>
+
+<div class="bg-white shadow-md rounded-lg p-6">
+    <h3 class="text-lg font-semibold mb-4 border-b pb-2">关联 API Key 池</h3>
+    <p class="text-sm text-gray-600 mb-4">场景启动后，将仅允许使用以下池中处于“有效”状态的 API Key 发起请求。</p>
+    
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {% for pool in pools %}
+        <div class="border p-4 rounded flex justify-between items-center {% if pool.id in bound_pool_ids %}bg-green-50 border-green-200{% endif %}">
+            <div>
+                <h4 class="font-bold">{{ pool.name }}</h4>
+                <p class="text-xs text-gray-500">{{ pool.description or '无描述' }}</p>
+            </div>
+            {% if pool.id in bound_pool_ids %}
+            <form action="/admin/scenes/{{ scene.id }}/pools/{{ pool.id }}/unbind" method="post">
+                <button type="submit" class="text-red-500 hover:text-red-700 text-sm border border-red-500 px-3 py-1 rounded">解绑</button>
+            </form>
+            {% else %}
+            <form action="/admin/scenes/{{ scene.id }}/pools/{{ pool.id }}/bind" method="post">
+                <button type="submit" class="text-blue-500 hover:text-blue-700 text-sm border border-blue-500 px-3 py-1 rounded">绑定</button>
+            </form>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="bg-white shadow-md rounded-lg p-6 mt-6">
+    <h3 class="text-lg font-semibold mb-4 border-b pb-2">风控策略配置</h3>
+    <p class="text-sm text-gray-600 mb-4">按策略类型分类展示，启用或禁用特定策略，并配置限流阈值等参数。</p>
+    
+    <!-- 策略分类标签页 -->
+    <div id="strategy-tabs" class="space-y-4">
+        <!-- 标签页导航 -->
+        <div class="border-b border-gray-200">
+            <nav class="-mb-px flex space-x-8 overflow-x-auto" aria-label="Tabs">
+                {% for stype, strategies in strategies_by_type.items() %}
+                <button
+                    onclick="switchStrategyTab('{{ stype }}')"
+                    id="tab-btn-{{ stype }}"
+                    class="strategy-tab whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm transition-colors duration-200 {% if loop.first %}border-blue-500 text-blue-600{% else %}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300{% endif %}">
+                    {{ stype | upper }}
+                    <span class="ml-2 bg-gray-100 text-gray-600 py-0.5 px-2 rounded-full text-xs">{{ strategies | length }}</span>
+                </button>
+                {% endfor %}
+            </nav>
+        </div>
+        
+        <!-- 标签页内容 -->
+        {% for stype, strategies in strategies_by_type.items() %}
+        <div id="tab-content-{{ stype }}" class="strategy-tab-content space-y-3 {% if not loop.first %}hidden{% endif %}">
+            {% for strategy in strategies %}
+                {% set relation = relations.get(strategy.id) %}
+                {% include "scenes/_strategy_row.html" %}
+            {% endfor %}
+        </div>
+        {% endfor %}
+    </div>
+    
+    <script>
+        function switchStrategyTab(tabName) {
+            // 隐藏所有内容
+            document.querySelectorAll('.strategy-tab-content').forEach(el => {
+                el.classList.add('hidden');
+            });
+            
+            // 重置所有按钮样式
+            document.querySelectorAll('.strategy-tab').forEach(btn => {
+                btn.classList.remove('border-blue-500', 'text-blue-600');
+                btn.classList.add('border-transparent', 'text-gray-500');
+            });
+            
+            // 显示选中的内容
+            const contentEl = document.getElementById('tab-content-' + tabName);
+            if (contentEl) {
+                contentEl.classList.remove('hidden');
+            }
+            
+            // 高亮选中的按钮
+            const btnEl = document.getElementById('tab-btn-' + tabName);
+            if (btnEl) {
+                btnEl.classList.remove('border-transparent', 'text-gray-500');
+                btnEl.classList.add('border-blue-500', 'text-blue-600');
+            }
+        }
+    </script>
+</div>
+{% endblock %}

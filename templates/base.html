@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Mock API 风控系统{% endblock %}</title>
+    <!-- Tailwind CSS (本地文件) -->
+    <script src="/static/tailwind.css"></script>
+    <!-- HTMX (本地文件) -->
+    <script src="/static/htmx.min.js"></script>
+</head>
+<body class="bg-gray-100">
+    <nav class="bg-white shadow-md p-4">
+        <div class="container mx-auto flex justify-between items-center">
+            <h1 class="text-xl font-bold text-gray-800">AI Mock API Server</h1>
+            <div class="space-x-4">
+                <a href="/admin/scenes" class="text-gray-600 hover:text-blue-500">场景管理</a>
+                <a href="/admin/pools" class="text-gray-600 hover:text-blue-500">Key 池管理</a>
+                <a href="/admin/reports" class="text-gray-600 hover:text-blue-500">测试报告</a>
+            </div>
+        </div>
+    </nav>
+    <main class="container mx-auto mt-8 p-4">
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>
