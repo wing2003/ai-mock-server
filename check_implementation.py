@@ -9,7 +9,6 @@ import importlib
 # 已注册的策略列表（从数据库查询结果）
 registered_strategies = [
     # Key Health (10-20)
-    {"code": "api_key_ban_strategy", "handler": "app.strategies.key_health.ApiKeyBanStrategy", "type": "key_health"},
     {"code": "api_key_expired_strategy", "handler": "app.strategies.key_health.ApiKeyExpiredStrategy", "type": "key_health"},
     {"code": "api_key_balance_strategy", "handler": "app.strategies.key_health.ApiKeyBalanceStrategy", "type": "key_health"},
     

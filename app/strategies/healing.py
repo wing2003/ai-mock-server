@@ -1,6 +1,8 @@
 from typing import Tuple, Dict, Any
 from app.strategies.base import BaseRiskStrategy
 from app.risk.context import RequestContext
+from app.services.counter import request_counter_service
+from app.core.state import runtime_state
 from datetime import datetime, timedelta
 import logging
 
@@ -63,98 +65,12 @@ class AutoHealingStrategy(BaseRiskStrategy):
         old_status = ctx.api_key_obj.status
         
         # 将 Key 恢复为 active 状态
-        ctx.api_key_obj.status = "active"
-        ctx.api_key_obj.updated_at = datetime.utcnow()
+        if ctx.api_key:
+            request_counter_service.track_key_status(ctx.api_key, "active")
+        runtime_state.update_key(ctx.api_key_obj.id, status="active", updated_at=datetime.utcnow())
         
         logger.info(f"Auto-healed API Key {ctx.api_key[:8]}... from {old_status} to active")
         
         # 注意：这里不设置 response_code 和 response_error
         # 因为自愈成功后，请求应该继续正常处理
         # 中间件会检测到状态已恢复，允许请求通过
-
-
-# 后台自愈服务（保留原有功能，但改为调用策略逻辑）
-class HealingService:
-    """自愈服务：负责定期检查并恢复受限的 API Key"""
-    
-    def __init__(self):
-        self.is_running = False
-        self.task = None
-
-    async def start(self):
-        """启动后台自愈任务"""
-        if self.is_running:
-            return
-        self.is_running = True
-        import asyncio
-        self.task = asyncio.create_task(self._healing_loop())
-        logger.info("Healing service started.")
-
-    async def stop(self):
-        """停止后台自愈任务"""
-        self.is_running = False
-        if self.task:
-            self.task.cancel()
-            try:
-                await self.task
-            except asyncio.CancelledError:
-                pass
-        logger.info("Healing service stopped.")
-
-    async def _healing_loop(self):
-        """自愈循环：每 60 秒检查一次"""
-        import asyncio
-        while self.is_running:
-            try:
-                await self._check_and_heal()
-            except Exception as e:
-                logger.error(f"Healing loop error: {e}")
-            # 等待 60 秒后再次执行
-            await asyncio.sleep(60)
-
-    async def _check_and_heal(self):
-        """执行具体的自愈逻辑"""
-        from sqlalchemy.ext.asyncio import AsyncSession
-        from sqlalchemy import select
-        from app.core.database import AsyncSessionLocal
-        from app.models.base import ApiKey
-        from app.services.config import config_service
-        
-        async with AsyncSessionLocal() as db:
-            now = datetime.utcnow()
-            
-            # 1. 处理临时限流 (temp_limited) 和 IP关联风险 (ip_risk)
-            interval_str = await config_service.get_value("temp_limited_interval", "300")
-            interval = int(interval_str)
-            cooldown_time = now - timedelta(seconds=interval)
-            
-            result = await db.execute(
-                select(ApiKey).where(
-                    ApiKey.status.in_(["temp_limited", "ip_risk"]),
-                    ApiKey.updated_at <= cooldown_time
-                )
-            )
-            keys_to_heal = result.scalars().all()
-
-            for key in keys_to_heal:
-                logger.info(f"Auto-healing API Key from {key.status}: {key.api_key[:8]}...")
-                key.status = "active"
-            
-            # 2. 处理节点不可用 (node_unavailable) - 试探性恢复
-            node_result = await db.execute(
-                select(ApiKey).where(
-                    ApiKey.status == "node_unavailable",
-                    ApiKey.updated_at <= cooldown_time
-                )
-            )
-            node_keys = node_result.scalars().all()
-            for key in node_keys:
-                key.status = "active"  # 尝试恢复
-
-            if keys_to_heal or node_keys:
-                await db.commit()
-                logger.info(f"Successfully healed {len(keys_to_heal) + len(node_keys)} API Keys.")
-
-
-# 全局单例
-healing_service = HealingService()

@@ -3,13 +3,13 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from datetime import datetime
-from app.core.database import get_db, AsyncSessionLocal
+from app.core.database import get_db
 from app.models.base import Scene, ApiKeyPool, ApiKey, ScenePoolRelation, StrategyMetadata, SceneStrategyRelation, TestReport, RiskEvent
 from app.core.state import runtime_state
 from app.services.healing import healing_service
 from app.services.counter import request_counter_service
 from app.services.report import report_service
-from app.risk.scheduler import risk_scheduler
+from app.risk.scheduler import risk_scheduler  # noqa: F401  (re-exported for backward compat)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -61,11 +61,8 @@ async def start_scene(scene_id: int, db: AsyncSession = Depends(get_db)):
         scene.started_at = datetime.utcnow()
         await db.commit()
         
-        runtime_state.start_scene(scene_id)
-        
-        # 初始化风控引擎
-        async with AsyncSessionLocal() as init_db:
-            await risk_scheduler.init_for_scene(scene_id, init_db)
+        # 一次性加载 Scene、Keys、Strategies 到内存（替代旧的 risk_scheduler.init_for_scene）
+        await runtime_state.start_scene(scene_id, db)
         
         await healing_service.start()
         await request_counter_service.start()
@@ -86,13 +83,17 @@ async def stop_scene(scene_id: int, db: AsyncSession = Depends(get_db)):
         scene.stopped_at = stopped_at
         await db.commit()
     
-    runtime_state.stop_scene()
+    # 先捕获放行请求数，再 flush 并清空内存，确保数据不丢失
+    total_passed = request_counter_service.get_total_passed()
+    
+    # 先 flush 再清空 RuntimeState 内存，确保 counter 的数据库写入先完成
     await healing_service.stop()
     await request_counter_service.stop_and_flush()
+    runtime_state.stop_scene()
     
     # 生成测试报告
     if scene and scene.started_at:
-        await report_service.generate_report(scene_id, scene.started_at)
+        await report_service.generate_report(scene_id, scene.started_at, total_passed=total_passed)
     
     return RedirectResponse(url="/admin/reports", status_code=303)
 
@@ -202,6 +203,8 @@ async def delete_key(key_id: int, db: AsyncSession = Depends(get_db)):
     if key:
         key.is_deleted = True
         await db.commit()
+        # 同步 RuntimeState 内存（标记为已删除）
+        runtime_state.update_key(key_id, is_deleted=True)
     return RedirectResponse(url=f"/admin/pools/{key.pool_id}/keys", status_code=303)
 
 @router.post("/scenes/{scene_id}/pools/{pool_id}/bind")
@@ -312,6 +315,24 @@ async def toggle_scene_strategy(
     ))
     new_relation = new_relation_result.scalar_one_or_none()
     
+    # 同步 RuntimeState：若当前场景正在运行且操作的就是该场景，实时更新内存中的策略列表
+    if (runtime_state.is_running
+            and runtime_state.scene
+            and runtime_state.scene.id == scene_id
+            and strategy):
+        if is_enabled:
+            # 启用：动态实例化策略并加入列表
+            instance = runtime_state.load_strategy_instance(
+                strategy,
+                new_relation.custom_params if new_relation else {},
+                strategy_id,
+            )
+            if instance:
+                runtime_state.add_strategy(instance)
+        else:
+            # 禁用：从列表中移除
+            runtime_state.remove_strategy(strategy.strategy_code)
+    
     # 如果是 HTMX 请求，返回局部 HTML；否则重定向
     if request.headers.get("HX-Request"):
         return request.app.state.templates.TemplateResponse(request, "scenes/_strategy_row.html", {
@@ -364,6 +385,13 @@ async def update_strategy_params(
     ))
     new_relation = new_relation_result.scalar_one_or_none()
     
+    # 同步 RuntimeState：若当前场景正在运行且操作的就是该场景，刷新策略参数
+    if (runtime_state.is_running
+            and runtime_state.scene
+            and runtime_state.scene.id == scene_id
+            and strategy):
+        runtime_state.update_strategy_params(strategy.strategy_code, params_dict)
+    
     return request.app.state.templates.TemplateResponse(request, "scenes/_strategy_row.html", {
         "strategy": strategy,
         "relation": new_relation,
@@ -381,6 +409,8 @@ async def update_key_status(
     if key:
         key.status = status
         await db.commit()
+        # 同步 RuntimeState 内存
+        runtime_state.update_key(key_id, status=status)
     return RedirectResponse(url=f"/admin/pools/{key.pool_id}/keys", status_code=303)
 
 @router.post("/pools/keys/update-balance/{key_id}")
@@ -394,6 +424,8 @@ async def update_key_balance(
     if key:
         key.balance = balance
         await db.commit()
+        # 同步 RuntimeState 内存
+        runtime_state.update_key(key_id, balance=balance)
     return RedirectResponse(url=f"/admin/pools/{key.pool_id}/keys", status_code=303)
 
 @router.post("/pools/keys/reset-count/{key_id}")

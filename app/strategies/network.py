@@ -2,6 +2,7 @@ from typing import Tuple, Dict, Any, Set
 from app.strategies.base import BaseRiskStrategy
 from app.risk.context import RequestContext
 from app.services.counter import request_counter_service
+from app.core.state import runtime_state
 from datetime import datetime, timedelta
 import logging
 from collections import defaultdict
@@ -77,7 +78,8 @@ class IPKeyRelationStrategy(BaseRiskStrategy):
     default_priority = 30
     default_params = {
         "max_keys_per_ip": 5,
-        "window_seconds": 3600
+        "degrade_key": False,
+        "window_seconds": 300
     }
 
     async def execute(self, ctx: RequestContext) -> Tuple[bool, Dict[str, Any]]:
@@ -85,14 +87,14 @@ class IPKeyRelationStrategy(BaseRiskStrategy):
             return False, {}
         
         max_keys = self.params.get("max_keys_per_ip", 5)
-        window_seconds = self.params.get("window_seconds", 3600)
+        window_seconds = self.params.get("window_seconds", 300)
         now = datetime.utcnow()
         window_start = now - timedelta(seconds=window_seconds)
         
         # 记录当前 IP-Key 关联
         ip_key_map[ctx.client_ip][ctx.api_key] = now
         
-        # 清理过期记录
+        # 清理过期记录（滑动窗口：超过 window_seconds 的关联自动失效）
         expired_keys = [
             key for key, last_seen in ip_key_map[ctx.client_ip].items()
             if last_seen < window_start
@@ -113,7 +115,7 @@ class IPKeyRelationStrategy(BaseRiskStrategy):
         return False, {}
 
     async def after_trigger(self, ctx: RequestContext):
-        """将所有关联的 Key 置为「IP关联风险」状态"""
+        """触发后的处置：返回 403，根据 degrade_key 决定是否变更 Key 状态"""
         ctx.response_code = 403
         ctx.response_error = {
             "error": {
@@ -123,17 +125,31 @@ class IPKeyRelationStrategy(BaseRiskStrategy):
             }
         }
         
-        # 将该 IP 下所有关联的 Key 标记为 ip_risk
+        degrade_key = self.params.get("degrade_key", False)
+        if not degrade_key:
+            # degrade_key: false — 仅返回 403，不修改 Key 状态
+            # 滑动窗口到期后关联记录自动清理，请求自然恢复
+            return
+        
+        # degrade_key: true — 通过双通道持久化将该 IP 下所有关联 Key 置为 ip_risk
+        now = datetime.utcnow()
         if ctx.client_ip and ctx.client_ip in ip_key_map:
             affected_keys = list(ip_key_map[ctx.client_ip].keys())
             logger.warning(f"Marking {len(affected_keys)} keys as ip_risk due to IP {ctx.client_ip}: {affected_keys}")
             for key in affected_keys:
+                # 通道一：写入 counter 缓存，定时 flush 批量落库
                 request_counter_service.track_key_status(key, "ip_risk")
+                # 通道二：同步更新 RuntimeState 内存，保证后续请求立即感知
+                key_obj = runtime_state.get_key_by_string(key)
+                if key_obj is not None:
+                    runtime_state.update_key(key_obj.id, status="ip_risk", updated_at=now)
         
         # 确保当前请求的 Key 也被标记（防止遗漏）
         if ctx.api_key and ctx.api_key not in ip_key_map.get(ctx.client_ip, {}):
             logger.warning(f"Also marking current key {ctx.api_key[:8]}... as ip_risk")
             request_counter_service.track_key_status(ctx.api_key, "ip_risk")
+            if ctx.api_key_obj is not None:
+                runtime_state.update_key(ctx.api_key_obj.id, status="ip_risk", updated_at=now)
 
 
 class KeyIPDriftStrategy(BaseRiskStrategy):
@@ -191,7 +207,7 @@ class KeyIPDriftStrategy(BaseRiskStrategy):
         }
         
         # 永久封禁该 Key
-        if ctx.api_key_obj:
-            ctx.api_key_obj.status = "banned"
-            ctx.api_key_obj.updated_at = datetime.utcnow()
+        if ctx.api_key and ctx.api_key_obj:
+            request_counter_service.track_key_status(ctx.api_key, "banned")
+            runtime_state.update_key(ctx.api_key_obj.id, status="banned", updated_at=datetime.utcnow())
             logger.warning(f"Permanently banned key {ctx.api_key[:8]}... due to IP drift")

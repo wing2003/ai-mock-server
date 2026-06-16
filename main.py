@@ -1,5 +1,5 @@
-from fastapi import FastAPI, Request, Depends
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse, RedirectResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -7,9 +7,7 @@ import uvicorn
 import os
 import logging
 from dotenv import load_dotenv
-from sqlalchemy import select
-from app.core.database import AsyncSessionLocal, engine, Base
-from app.models.base import ApiKey, ScenePoolRelation
+from app.core.database import engine, Base
 from app.core.state import runtime_state
 from app.services.counter import request_counter_service
 from app.services.config import config_service
@@ -74,48 +72,34 @@ def create_app() -> FastAPI:
                 client_ip=client_ip,
                 api_key=api_key,
                 user_agent=request.headers.get("user-agent"),
-                scene_id=runtime_state.active_scene_id,
+                scene_id=runtime_state.scene.id if runtime_state.scene else None,
                 request_path=request.url.path,
                 request_method=request.method
             )
 
-            # 3. API Key 基础校验与对象获取
+            # 3. API Key 基础校验：从 RuntimeState 内存读取，无需查数据库
             if api_key:
-                async with AsyncSessionLocal() as db:
-                    result = await db.execute(select(ApiKey).where(ApiKey.api_key == api_key))
-                    key_obj = result.scalar_one_or_none()
-                    
-                    if not key_obj or key_obj.status != "active":
-                        return JSONResponse(
-                            status_code=401,
-                            content={"error": {"message": "Invalid or inactive API Key."}}
-                        )
-                    
-                    relation_result = await db.execute(select(ScenePoolRelation).where(
-                        ScenePoolRelation.scene_id == runtime_state.active_scene_id,
-                        ScenePoolRelation.pool_id == key_obj.pool_id
-                    ))
-                    if not relation_result.scalar_one_or_none():
-                        return JSONResponse(
-                            status_code=403,
-                            content={"error": {"message": "API Key pool is not bound to the current scene."}}
-                        )
-                    
-                    ctx.api_key_obj = key_obj
+                key_obj = runtime_state.get_key_by_string(api_key)
+                
+                if not key_obj or key_obj.status != "active":
+                    return JSONResponse(
+                        status_code=401,
+                        content={"error": {"message": "Invalid or inactive API Key."}}
+                    )
+                
+                # 池绑定校验在启动时已通过（RuntimeState.keys 仅含绑定池的 Key），无需再查
+                ctx.api_key_obj = key_obj
 
-                    # 4. 执行风控链
-                    is_risk = await risk_scheduler.execute_chain(ctx)
-                    if is_risk:
-                        # 注意：不在这里追踪状态，因为策略的 after_trigger 已经处理了
-                        # 避免用旧状态覆盖新状态
-                        
-                        return JSONResponse(
-                            status_code=429 if "limit" in ctx.trigger_strategy_code else 403,
-                            content={"error": {"message": f"Risk control triggered: {ctx.trigger_details.get('message', 'Unknown')}"}}
-                        )
-                    
-                    # 5. 内存计数
-                    request_counter_service.increment(api_key)
+                # 4. 执行风控链
+                is_risk = await risk_scheduler.execute_chain(ctx)
+                if is_risk:
+                    return JSONResponse(
+                        status_code=429 if "limit" in ctx.trigger_strategy_code else 403,
+                        content={"error": {"message": f"Risk control triggered: {ctx.trigger_details.get('message', 'Unknown')}"}}
+                    )
+                
+                # 5. 内存计数
+                request_counter_service.increment(api_key)
 
         response = await call_next(request)
         return response
@@ -135,6 +119,11 @@ def create_app() -> FastAPI:
     @app.get("/")
     async def root_redirect():
         return RedirectResponse(url="/admin/scenes", status_code=307)
+
+    # favicon.ico 返回静态图片
+    @app.get("/favicon.ico", include_in_schema=False)
+    async def favicon():
+        return FileResponse("static/favicon.jpg")
 
     # 注册原有 Mock 路由 (server.main)
     from server.main import app as mock_app

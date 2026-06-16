@@ -3,6 +3,8 @@ from app.risk.context import RequestContext
 from app.strategies.base import BaseRiskStrategy
 from app.risk.limiter import limiter
 from app.services.config import config_service
+from app.services.counter import request_counter_service
+from app.core.state import runtime_state
 from datetime import datetime
 import logging
 
@@ -14,7 +16,7 @@ class IPRpmLimitStrategy(BaseRiskStrategy):
     strategy_name: str = "IP 每分钟请求数限制"
     strategy_type: str = "network"
     default_priority: int = 21
-    default_params: Dict[str, Any] = {"rpm": 60}
+    default_params: Dict[str, Any] = {"rpm": 60, "degrade_key": False}
 
     async def execute(self, ctx: RequestContext) -> Tuple[bool, Dict[str, Any]]:
         rpm_limit = self.params.get("rpm", 60)
@@ -24,9 +26,11 @@ class IPRpmLimitStrategy(BaseRiskStrategy):
         return False, {}
 
     async def after_trigger(self, ctx: RequestContext):
-        if ctx.api_key_obj:
-            ctx.api_key_obj.status = "temp_limited"
-            ctx.api_key_obj.updated_at = datetime.utcnow()
+        if not self.params.get("degrade_key", False):
+            return
+        if ctx.api_key and ctx.api_key_obj:
+            request_counter_service.track_key_status(ctx.api_key, "temp_limited")
+            runtime_state.update_key(ctx.api_key_obj.id, status="temp_limited", updated_at=datetime.utcnow())
 
 class IPRphLimitStrategy(BaseRiskStrategy):
     """IP 每小时请求数限制策略"""
@@ -34,7 +38,7 @@ class IPRphLimitStrategy(BaseRiskStrategy):
     strategy_name: str = "IP 每小时请求数限制"
     strategy_type: str = "network"
     default_priority: int = 22
-    default_params: Dict[str, Any] = {"rph": 1000}
+    default_params: Dict[str, Any] = {"rph": 1000, "degrade_key": False}
 
     async def execute(self, ctx: RequestContext) -> Tuple[bool, Dict[str, Any]]:
         rph_limit = self.params.get("rph", 1000)
@@ -44,9 +48,11 @@ class IPRphLimitStrategy(BaseRiskStrategy):
         return False, {}
 
     async def after_trigger(self, ctx: RequestContext):
-        if ctx.api_key_obj:
-            ctx.api_key_obj.status = "temp_limited"
-            ctx.api_key_obj.updated_at = datetime.utcnow()
+        if not self.params.get("degrade_key", False):
+            return
+        if ctx.api_key and ctx.api_key_obj:
+            request_counter_service.track_key_status(ctx.api_key, "temp_limited")
+            runtime_state.update_key(ctx.api_key_obj.id, status="temp_limited", updated_at=datetime.utcnow())
 
 class GlobalRpmLimitStrategy(BaseRiskStrategy):
     """全局每分钟请求数限制策略"""
@@ -54,7 +60,7 @@ class GlobalRpmLimitStrategy(BaseRiskStrategy):
     strategy_name: str = "全局每分钟请求数限制"
     strategy_type: str = "limit"
     default_priority: int = 61
-    default_params: Dict[str, Any] = {"rpm": 2000}
+    default_params: Dict[str, Any] = {"rpm": 2000, "degrade_key": False}
 
     async def execute(self, ctx: RequestContext) -> Tuple[bool, Dict[str, Any]]:
         rpm_limit = self.params.get("rpm", 2000)
@@ -63,13 +69,20 @@ class GlobalRpmLimitStrategy(BaseRiskStrategy):
             return True, {"message": f"Global RPM limit exceeded: {rpm_limit}"}
         return False, {}
 
+    async def after_trigger(self, ctx: RequestContext):
+        if not self.params.get("degrade_key", False):
+            return
+        if ctx.api_key and ctx.api_key_obj:
+            request_counter_service.track_key_status(ctx.api_key, "temp_limited")
+            runtime_state.update_key(ctx.api_key_obj.id, status="temp_limited", updated_at=datetime.utcnow())
+
 class ApiKeyRpmLimitStrategy(BaseRiskStrategy):
     """API Key 每分钟请求数限制策略"""
     strategy_code: str = "api_key_rpm_limit"
     strategy_name: str = "API Key 每分钟请求数限制"
     strategy_type: str = "limit"
     default_priority: int = 62
-    default_params: Dict[str, Any] = {"rpm": 100}
+    default_params: Dict[str, Any] = {"rpm": 100, "degrade_key": False}
 
     async def execute(self, ctx: RequestContext) -> Tuple[bool, Dict[str, Any]]:
         if not ctx.api_key:
@@ -81,9 +94,11 @@ class ApiKeyRpmLimitStrategy(BaseRiskStrategy):
         return False, {}
 
     async def after_trigger(self, ctx: RequestContext):
-        if ctx.api_key_obj:
-            ctx.api_key_obj.status = "temp_limited"
-            ctx.api_key_obj.updated_at = datetime.utcnow()
+        if not self.params.get("degrade_key", False):
+            return
+        if ctx.api_key and ctx.api_key_obj:
+            request_counter_service.track_key_status(ctx.api_key, "temp_limited")
+            runtime_state.update_key(ctx.api_key_obj.id, status="temp_limited", updated_at=datetime.utcnow())
 
 
 class IPConcurrencyLimitStrategy(BaseRiskStrategy):
@@ -92,7 +107,7 @@ class IPConcurrencyLimitStrategy(BaseRiskStrategy):
     strategy_name: str = "单 IP 并发数限制"
     strategy_type: str = "limit"
     default_priority: int = 70
-    default_params: Dict[str, Any] = {"max_concurrent": 10}
+    default_params: Dict[str, Any] = {"max_concurrent": 10, "degrade_key": False}
 
     async def execute(self, ctx: RequestContext) -> Tuple[bool, Dict[str, Any]]:
         max_concurrent = self.params.get("max_concurrent", 10)
@@ -102,9 +117,11 @@ class IPConcurrencyLimitStrategy(BaseRiskStrategy):
         return False, {}
 
     async def after_trigger(self, ctx: RequestContext):
-        if ctx.api_key_obj:
-            ctx.api_key_obj.status = "temp_limited"
-            ctx.api_key_obj.updated_at = datetime.utcnow()
+        if not self.params.get("degrade_key", False):
+            return
+        if ctx.api_key and ctx.api_key_obj:
+            request_counter_service.track_key_status(ctx.api_key, "temp_limited")
+            runtime_state.update_key(ctx.api_key_obj.id, status="temp_limited", updated_at=datetime.utcnow())
 
 
 class KeyConcurrencyLimitStrategy(BaseRiskStrategy):
@@ -113,7 +130,7 @@ class KeyConcurrencyLimitStrategy(BaseRiskStrategy):
     strategy_name: str = "单 Key 并发数限制"
     strategy_type: str = "limit"
     default_priority: int = 71
-    default_params: Dict[str, Any] = {"max_concurrent": 5}
+    default_params: Dict[str, Any] = {"max_concurrent": 5, "degrade_key": False}
 
     async def execute(self, ctx: RequestContext) -> Tuple[bool, Dict[str, Any]]:
         if not ctx.api_key:
@@ -125,9 +142,11 @@ class KeyConcurrencyLimitStrategy(BaseRiskStrategy):
         return False, {}
 
     async def after_trigger(self, ctx: RequestContext):
-        if ctx.api_key_obj:
-            ctx.api_key_obj.status = "temp_limited"
-            ctx.api_key_obj.updated_at = datetime.utcnow()
+        if not self.params.get("degrade_key", False):
+            return
+        if ctx.api_key and ctx.api_key_obj:
+            request_counter_service.track_key_status(ctx.api_key, "temp_limited")
+            runtime_state.update_key(ctx.api_key_obj.id, status="temp_limited", updated_at=datetime.utcnow())
 
 
 class ModelRpmLimitStrategy(BaseRiskStrategy):

@@ -24,6 +24,7 @@
             <form hx-post="/admin/scenes/{{ request.path_params.scene_id }}/strategies/{{ strategy.id }}/params"
                   hx-target="#strategy-row-{{ strategy.id }}"
                   hx-swap="outerHTML"
+                  hx-on::after-swap="document.body.dispatchEvent(new CustomEvent('toast-success', {detail: {message: '参数已更新'}}))"
                   class="flex items-center space-x-2">
                 {% set raw_params = relation.custom_params if relation.custom_params else strategy.default_params %}
                 {% set display_value = raw_params if raw_params is string else (raw_params | tojson) %}

@@ -11,8 +11,14 @@ logger = logging.getLogger(__name__)
 class ReportService:
     """测试报告服务"""
 
-    async def generate_report(self, scene_id: int, started_at: datetime):
-        """生成并保存测试报告"""
+    async def generate_report(self, scene_id: int, started_at: datetime, total_passed: int = 0):
+        """生成并保存测试报告
+        
+        Args:
+            scene_id: 场景 ID
+            started_at: 场景启动时间
+            total_passed: 从 counter 服务捕获的放行请求总数
+        """
         async with AsyncSessionLocal() as db:
             # 1. 获取场景信息
             scene_result = await db.execute(select(Scene).where(Scene.id == scene_id))
@@ -32,18 +38,31 @@ class ReportService:
             )
             events = events_result.scalars().all()
 
-            total_requests = len(events) + 100  # 模拟一些正常请求，实际应从计数器获取
             blocked_requests = len(events)
+            total_requests = total_passed + blocked_requests
             block_rate = blocked_requests / total_requests if total_requests > 0 else 0
 
             # 3. 聚合统计数据
             error_code_stats = {}
             strategy_trigger_stats = {}
+            # 预加载 strategy_id -> strategy_code 映射
+            strategy_name_map = {}
+            if events:
+                strategy_ids = list({e.strategy_id for e in events if e.strategy_id})
+                if strategy_ids:
+                    meta_result = await db.execute(
+                        select(StrategyMetadata.id, StrategyMetadata.strategy_code).where(
+                            StrategyMetadata.id.in_(strategy_ids)
+                        )
+                    )
+                    for row in meta_result.all():
+                        strategy_name_map[row[0]] = row[1]
+
             for event in events:
                 code = str(event.error_code)
                 error_code_stats[code] = error_code_stats.get(code, 0) + 1
                 
-                s_name = f"strategy_{event.strategy_id}"
+                s_name = strategy_name_map.get(event.strategy_id, f"strategy_{event.strategy_id}")
                 strategy_trigger_stats[s_name] = strategy_trigger_stats.get(s_name, 0) + 1
 
             # 4. 获取策略快照

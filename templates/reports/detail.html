@@ -7,7 +7,7 @@
         <a href="/admin/reports" class="bg-gray-500 hover:bg-gray-700 text-white font-bold py-2 px-4 rounded">返回列表</a>
     </div>
 
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
         <div class="bg-white shadow-md rounded-lg p-6">
             <h3 class="text-lg font-semibold text-gray-700 mb-2">运行概况</h3>
             <p>开始时间: {{ report.started_at.strftime('%Y-%m-%d %H:%M:%S') }}</p>
@@ -23,6 +23,10 @@
         <div class="bg-white shadow-md rounded-lg p-6">
             <h3 class="text-lg font-semibold text-gray-700 mb-2">拦截率</h3>
             <p class="text-3xl font-bold text-red-600">{{ "%.2f"|format(report.block_rate * 100) }}%</p>
+        </div>
+        <div class="bg-white shadow-md rounded-lg p-6">
+            <h3 class="text-lg font-semibold text-gray-700 mb-2">Token 统计</h3>
+            <p>总 Token 数: {{ report.total_tokens }}</p>
         </div>
     </div>
 
@@ -40,6 +44,28 @@
                     {% for code, count in report.error_code_stats.items() %}
                     <tr class="border-b">
                         <td class="px-4 py-2">{{ code }}</td>
+                        <td class="px-4 py-2">{{ count }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="bg-white shadow-md rounded-lg p-6 mb-8">
+        <h3 class="text-lg font-semibold text-gray-700 mb-4">策略触发统计</h3>
+        <div class="overflow-x-auto">
+            <table class="min-w-full">
+                <thead>
+                    <tr class="bg-gray-100">
+                        <th class="px-4 py-2 text-left">策略 Code</th>
+                        <th class="px-4 py-2 text-left">触发次数</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for strategy, count in report.strategy_trigger_stats.items() %}
+                    <tr class="border-b">
+                        <td class="px-4 py-2">{{ strategy }}</td>
                         <td class="px-4 py-2">{{ count }}</td>
                     </tr>
                     {% endfor %}

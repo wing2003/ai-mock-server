@@ -1,6 +1,8 @@
 from typing import Tuple, Dict, Any
 from app.strategies.base import BaseRiskStrategy
 from app.risk.context import RequestContext
+from app.services.counter import request_counter_service
+from app.core.state import runtime_state
 from collections import defaultdict
 from datetime import datetime, timedelta
 import logging
@@ -83,9 +85,9 @@ class ErrorRateFuseStrategy(BaseRiskStrategy):
         }
         
         # 将 Key 状态标记为 node_unavailable
-        if ctx.api_key_obj:
-            ctx.api_key_obj.status = "node_unavailable"
-            ctx.api_key_obj.updated_at = datetime.utcnow()
+        if ctx.api_key and ctx.api_key_obj:
+            request_counter_service.track_key_status(ctx.api_key, "node_unavailable")
+            runtime_state.update_key(ctx.api_key_obj.id, status="node_unavailable", updated_at=datetime.utcnow())
             logger.warning(f"Key {ctx.api_key[:8]}... marked as node_unavailable due to high error rate")
 
     @staticmethod

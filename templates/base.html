@@ -23,5 +23,47 @@
     <main class="container mx-auto mt-8 p-4">
         {% block content %}{% endblock %}
     </main>
+
+    <!-- 全局 Toast 提示容器 -->
+    <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col space-y-2"></div>
+
+    <script>
+    // 全局 Toast 函数
+    function showToast(message, type) {
+        type = type || 'success';
+        var container = document.getElementById('toast-container');
+        var toast = document.createElement('div');
+        var baseClass = 'px-4 py-2 rounded shadow-lg text-sm font-medium transition-opacity duration-300';
+        var colorClass = type === 'success'
+            ? 'bg-green-500 text-white'
+            : 'bg-red-500 text-white';
+        toast.className = baseClass + ' ' + colorClass;
+        toast.textContent = message;
+        container.appendChild(toast);
+        setTimeout(function() {
+            toast.style.opacity = '0';
+            setTimeout(function() { toast.remove(); }, 300);
+        }, 2500);
+    }
+
+    // 监听 htmx 自定义事件
+    document.body.addEventListener('toast-success', function(e) {
+        showToast(e.detail.message || '操作成功', 'success');
+    });
+    document.body.addEventListener('toast-error', function(e) {
+        showToast(e.detail.message || '操作失败', 'error');
+    });
+
+    // htmx 请求错误时自动触发失败 Toast
+    document.body.addEventListener('htmx:responseError', function(e) {
+        var status = e.detail.xhr.status;
+        var msg = '请求失败 (HTTP ' + status + ')';
+        try {
+            var resp = JSON.parse(e.detail.xhr.responseText);
+            if (resp.detail) msg = resp.detail;
+        } catch(ex) {}
+        showToast(msg, 'error');
+    });
+    </script>
 </body>
 </html>

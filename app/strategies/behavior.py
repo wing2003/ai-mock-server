@@ -1,6 +1,8 @@
 from typing import Tuple, Dict, Any
 from app.strategies.base import BaseRiskStrategy
 from app.risk.context import RequestContext
+from app.services.counter import request_counter_service
+from app.core.state import runtime_state
 from collections import defaultdict
 from datetime import datetime, timedelta
 import time
@@ -91,9 +93,9 @@ class MachineBehaviorStrategy(BaseRiskStrategy):
         }
         
         # 将 Key 标记为请求行为异常
-        if ctx.api_key_obj:
-            ctx.api_key_obj.status = "behavior_anomaly"
-            ctx.api_key_obj.updated_at = datetime.utcnow()
+        if ctx.api_key and ctx.api_key_obj:
+            request_counter_service.track_key_status(ctx.api_key, "behavior_anomaly")
+            runtime_state.update_key(ctx.api_key_obj.id, status="behavior_anomaly", updated_at=datetime.utcnow())
             logger.warning(f"Key {ctx.api_key[:8]}... marked as behavior_anomaly due to machine-like pattern")
 
     @staticmethod
@@ -184,7 +186,7 @@ class BehaviorAnomalyStrategy(BaseRiskStrategy):
             }
         
         # 将 Key 标记为请求行为异常
-        if ctx.api_key_obj:
-            ctx.api_key_obj.status = "behavior_anomaly"
-            ctx.api_key_obj.updated_at = datetime.utcnow()
+        if ctx.api_key and ctx.api_key_obj:
+            request_counter_service.track_key_status(ctx.api_key, "behavior_anomaly")
+            runtime_state.update_key(ctx.api_key_obj.id, status="behavior_anomaly", updated_at=datetime.utcnow())
             logger.warning(f"Key {ctx.api_key[:8]}... marked as behavior_anomaly: {reason}")

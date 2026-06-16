@@ -7,38 +7,6 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-class ApiKeyBanStrategy(BaseRiskStrategy):
-    """API Key 永久封禁校验策略"""
-    strategy_code = "api_key_ban_strategy"
-    strategy_name = "API Key 永久封禁校验"
-    strategy_type = "key_health"
-    default_priority = 10
-    default_params = {}
-
-    async def execute(self, ctx: RequestContext) -> Tuple[bool, Dict[str, Any]]:
-        """检查 API Key 是否被永久封禁"""
-        if not ctx.api_key_obj:
-            return False, {}
-        
-        if ctx.api_key_obj.status == "banned":
-            return True, {
-                "message": f"API Key {ctx.api_key[:8]}... is permanently banned",
-                "status": "banned"
-            }
-        
-        return False, {}
-
-    async def after_trigger(self, ctx: RequestContext):
-        """永久封禁的 Key 直接返回 403"""
-        ctx.response_code = 403
-        ctx.response_error = {
-            "error": {
-                "message": "This API key has been permanently banned.",
-                "type": "auth_error",
-                "code": "api_key_banned"
-            }
-        }
-
 
 class ApiKeyExpiredStrategy(BaseRiskStrategy):
     """API Key 过期校验策略"""
@@ -92,7 +60,7 @@ class ApiKeyBalanceStrategy(BaseRiskStrategy):
         min_balance = self.params.get("min_balance", 0.0)
         
         # 检查余额是否低于阈值
-        if ctx.api_key_obj.balance < min_balance:
+        if ctx.api_key_obj.balance <= min_balance:
             return True, {
                 "message": f"API Key {ctx.api_key[:8]}... has insufficient balance: {ctx.api_key_obj.balance} (minimum: {min_balance})",
                 "current_balance": float(ctx.api_key_obj.balance),
