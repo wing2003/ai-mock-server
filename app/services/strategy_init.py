@@ -19,7 +19,8 @@ class StrategyInitService:
             # 2. 网络与 IP 池风控 (优先级 21-40)
             {"code": "ip_rpm_limit", "name": "IP 每分钟请求数限制", "type": "network", "priority": 21, "params": {"rpm": 60, "degrade_key": False}, "handler": "app.strategies.limit.IPRpmLimitStrategy"},
             {"code": "ip_rph_limit", "name": "IP 每小时请求数限制", "type": "network", "priority": 22, "params": {"rph": 1000, "degrade_key": False}, "handler": "app.strategies.limit.IPRphLimitStrategy"},
-            {"code": "ip_whitelist_strategy", "name": "IP 白名单校验", "type": "network", "priority": 23, "params": {}, "handler": "app.strategies.network.IPWhitelistStrategy"},
+            {"code": "ip_concurrency_limit", "name": "单 IP 并发数限制", "type": "network", "priority": 23, "params": {"max_concurrent": 10, "degrade_key": False}, "handler": "app.strategies.limit.IPConcurrencyLimitStrategy"},
+            {"code": "ip_whitelist_strategy", "name": "IP 黑白名单校验", "type": "network", "priority": 25, "params": {"type": "black", "ips": [], "degrade_key": False}, "handler": "app.strategies.network.IPWhitelistStrategy"},
             
             # 3. 传输与指纹风控 (优先级 41-60)
             {"code": "ua_blacklist_check", "name": "User-Agent 黑名单校验", "type": "transport", "priority": 50, "params": {"blocked_uas": []}, "handler": "app.strategies.transport.UserAgentCheckStrategy"},
@@ -27,7 +28,6 @@ class StrategyInitService:
             # 4. 流量限流策略 (优先级 61-80)
             {"code": "global_rpm_limit", "name": "全局每分钟请求数限制", "type": "limit", "priority": 61, "params": {"rpm": 2000, "degrade_key": False}, "handler": "app.strategies.limit.GlobalRpmLimitStrategy"},
             {"code": "api_key_rpm_limit", "name": "API Key 每分钟请求数限制", "type": "limit", "priority": 62, "params": {"rpm": 100, "degrade_key": False}, "handler": "app.strategies.limit.ApiKeyRpmLimitStrategy"},
-            {"code": "ip_concurrency_limit", "name": "单 IP 并发数限制", "type": "limit", "priority": 70, "params": {"max_concurrent": 10, "degrade_key": False}, "handler": "app.strategies.limit.IPConcurrencyLimitStrategy"},
             {"code": "key_concurrency_limit", "name": "单 Key 并发数限制", "type": "limit", "priority": 71, "params": {"max_concurrent": 5, "degrade_key": False}, "handler": "app.strategies.limit.KeyConcurrencyLimitStrategy"},
             
             # 5. 内容安全审核 (优先级 81-100)

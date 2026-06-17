@@ -17,57 +17,79 @@ key_ip_map: Dict[str, Dict[str, datetime]] = defaultdict(dict)
 
 
 class IPWhitelistStrategy(BaseRiskStrategy):
-    """IP 白名单校验策略"""
+    """IP 黑白名单校验策略"""
     strategy_code = "ip_whitelist_strategy"
-    strategy_name = "IP 白名单校验"
+    strategy_name = "IP 黑白名单校验"
     strategy_type = "network"
     default_priority = 23
     default_params = {
-        "whitelist_ips": [],  # 白名单 IP 列表
-        "mode": "strict"      # strict: 仅允许白名单; permissive: 仅拒绝黑名单
+        "type": "black",    # "white": 白名单模式（仅允许 ips 中的 IP）；"black": 黑名单模式（拒绝 ips 中的 IP）
+        "ips": [],          # IP 列表
+        "degrade_key": False
     }
 
     async def execute(self, ctx: RequestContext) -> Tuple[bool, Dict[str, Any]]:
-        """检查客户端 IP 是否在白名单中"""
+        """根据 type 模式检查客户端 IP 是否在名单中"""
         if not ctx.client_ip:
             return False, {}
         
-        whitelist_ips = self.params.get("whitelist_ips", [])
-        mode = self.params.get("mode", "strict")
+        ips = self.params.get("ips", [])
+        mode = self.params.get("type", "black")
         
-        # 如果没有配置白名单，不拦截
-        if not whitelist_ips:
+        # 如果没有配置 IP 列表，不拦截
+        if not ips:
             return False, {}
         
-        # 严格模式：仅允许白名单中的 IP
-        if mode == "strict":
-            if ctx.client_ip not in whitelist_ips:
+        if mode == "white":
+            # 白名单模式：仅允许 ips 中的 IP，不在名单中则拦截
+            if ctx.client_ip not in ips:
                 return True, {
                     "message": f"IP {ctx.client_ip} is not in the whitelist",
                     "client_ip": ctx.client_ip,
-                    "mode": "strict"
+                    "mode": "white"
                 }
-        # 宽松模式：仅拒绝不在白名单中的 IP（与严格模式相同逻辑）
         else:
-            if ctx.client_ip not in whitelist_ips:
+            # 黑名单模式：ips 中的 IP 被拦截，不在名单中则放行
+            if ctx.client_ip in ips:
                 return True, {
-                    "message": f"IP {ctx.client_ip} is not allowed",
+                    "message": f"IP {ctx.client_ip} is in the blacklist",
                     "client_ip": ctx.client_ip,
-                    "mode": mode
+                    "mode": "black"
                 }
         
         return False, {}
 
     async def after_trigger(self, ctx: RequestContext):
-        """IP 不在白名单中，返回 403"""
+        """触发后的处置：返回 403，根据 degrade_key 决定是否变更 Key 状态"""
+        mode = self.params.get("type", "black")
+        error_msg = (
+            "Access denied. Your IP address is not authorized to access this service."
+            if mode == "white"
+            else "Access denied. Your IP address has been blacklisted."
+        )
         ctx.response_code = 403
         ctx.response_error = {
             "error": {
-                "message": "Access denied. Your IP address is not authorized to access this service.",
+                "message": error_msg,
                 "type": "ip_restriction",
-                "code": "ip_not_whitelisted"
+                "code": "ip_not_whitelisted" if mode == "white" else "ip_blacklisted"
             }
         }
+        
+        degrade_key = self.params.get("degrade_key", False)
+        if not degrade_key:
+            # degrade_key: false — 仅返回 403，不修改 Key 状态
+            return
+        
+        # degrade_key: true — 通过双通道持久化将该 Key 置为 ip_risk
+        now = datetime.utcnow()
+        if ctx.api_key:
+            logger.warning(f"Marking key {ctx.api_key[:8]}... as ip_risk due to IP {ctx.client_ip} ({mode}list)")
+            # 通道一：写入 counter 缓存，定时 flush 批量落库
+            request_counter_service.track_key_status(ctx.api_key, "ip_risk")
+            # 通道二：同步更新 RuntimeState 内存，保证后续请求立即感知
+            if ctx.api_key_obj is not None:
+                runtime_state.update_key(ctx.api_key_obj.id, status="ip_risk", updated_at=now)
 
 
 class IPKeyRelationStrategy(BaseRiskStrategy):
