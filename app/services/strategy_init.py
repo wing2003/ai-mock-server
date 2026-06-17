@@ -38,7 +38,7 @@ class StrategyInitService:
             
             # 7. 网络风控扩展 (优先级 21-40)
             {"code": "ip_key_relation_check", "name": "单 IP 多 Key 关联检测", "type": "network", "priority": 30, "params": {"max_keys_per_ip": 5, "degrade_key": False, "window_seconds": 300}, "handler": "app.strategies.network.IPKeyRelationStrategy"},
-            {"code": "key_ip_drift_check", "name": "单 Key 多 IP 漂移检测", "type": "network", "priority": 35, "params": {"max_ips_per_key": 3}, "handler": "app.strategies.network.KeyIPDriftStrategy"},
+            {"code": "key_ip_drift_check", "name": "单 Key 多 IP 漂移检测", "type": "network", "priority": 35, "params": {"max_ips_per_key": 3, "degrade_key": False, "window_seconds": 300}, "handler": "app.strategies.network.KeyIPDriftStrategy"},
             
             # 7. 自动剔除与熔断 (优先级 121-140)
             {"code": "error_rate_fuse", "name": "错误率熔断", "type": "fuse", "priority": 121, "params": {"threshold": 0.5, "window": 60}, "handler": "app.strategies.fuse.ErrorRateFuseStrategy"},
